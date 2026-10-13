@@ -1,0 +1,34 @@
+# Local demo only. Secrets come from .env (copy .env.example) - never commit real values.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mcpref
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      MCP_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?set in .env}
+      MCP_APP_PASSWORD: ${DB_APP_PASSWORD:?set in .env}
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mcpref"]
+      interval: 2s
+      retries: 30
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/mcpref
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD}
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD}
+      ANALYST_PASSWORD: ${ANALYST_PASSWORD:?set in .env}
+      COMPLIANCE_PASSWORD: ${COMPLIANCE_PASSWORD:?set in .env}
+      MCP_UPSTREAM_URL: ${MCP_UPSTREAM_URL:-https://ares.cz-agents.dev/mcp}
+      MCP_UPSTREAM_TOKEN: ${MCP_UPSTREAM_TOKEN:-}
+    ports:
+      - "127.0.0.1:8080:8080"

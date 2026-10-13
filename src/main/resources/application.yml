@@ -1,0 +1,48 @@
+app:
+  # Injected from pom.xml at build time; part of every provenance record.
+  adapter-version: "@project.version@"
+  security:
+    users:
+      - username: analyst
+        password: ${ANALYST_PASSWORD}
+        roles: [ANALYST]
+      - username: compliance
+        password: ${COMPLIANCE_PASSWORD}
+        roles: [COMPLIANCE]
+
+mcp:
+  upstream:
+    url: ${MCP_UPSTREAM_URL:https://ares.cz-agents.dev/mcp}
+    # Optional. The public ARES server has an anonymous tier, so this is empty by default.
+    bearer-token: ${MCP_UPSTREAM_TOKEN:}
+    connect-timeout: 2s
+    request-timeout: 5s
+    max-calls-per-minute: 30
+
+spring:
+  application:
+    name: mcp-spring-reference
+  # The application connects as mcp_app: INSERT-only on the audit table.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/mcpref}?currentSchema=mcpref
+    username: ${DB_APP_USER:mcp_app}
+    password: ${DB_APP_PASSWORD}
+  # Migrations run as mcp_owner, which owns the schema and issues the grants.
+  flyway:
+    user: ${DB_OWNER_USER:mcp_owner}
+    password: ${DB_OWNER_PASSWORD}
+    schemas: mcpref
+    default-schema: mcpref
+    create-schemas: false
+    placeholders:
+      app_role: ${DB_APP_USER:mcp_app}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  pattern:
+    level: "%5p [trace=%X{traceId:-}]"

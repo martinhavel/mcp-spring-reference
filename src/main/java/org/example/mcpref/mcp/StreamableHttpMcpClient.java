@@ -176,7 +176,7 @@ public class StreamableHttpMcpClient implements McpClient {
         String contentType = response.headers().firstValue("Content-Type").orElse("");
         JsonNode reply = contentType.startsWith("text/event-stream")
                 ? findInEventStream(body, id)
-                : parse(body);
+                : parseChecked(body);
         if (reply == null || reply.path("id").asLong(-1) != id) {
             throw new UpstreamUnavailableException("Upstream reply to " + method + " has no matching JSON-RPC id");
         }
@@ -238,7 +238,7 @@ public class StreamableHttpMcpClient implements McpClient {
             if (line.startsWith("data:")) {
                 data.append(line.substring(5).strip()).append('\n');
             } else if (line.isEmpty() && !data.isEmpty()) {
-                JsonNode event = parse(data.toString().getBytes(StandardCharsets.UTF_8));
+                JsonNode event = parseChecked(data.toString().getBytes(StandardCharsets.UTF_8));
                 if (event.path("id").asLong(-1) == id) {
                     return event;
                 }
@@ -246,6 +246,17 @@ public class StreamableHttpMcpClient implements McpClient {
             }
         }
         return null;
+    }
+
+    /**
+     * Parses one JSON message and re-runs the credential check on its decoded form, re-serialized
+     * without the raw body's escapes, so a token hidden behind JSON unicode escapes is still found.
+     * Every message (JSON reply or SSE event) is checked before it is retained or selected.
+     */
+    private JsonNode parseChecked(byte[] json) {
+        JsonNode node = parse(json);
+        rejectIfCredentialReflected(toBytes(node));
+        return node;
     }
 
     private JsonNode parse(byte[] json) {

@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -93,6 +94,26 @@ class OptionalFormatterTest extends IntegrationTestBase {
 
         String formatterInput = new ObjectMapper().registerModule(new JavaTimeModule()).writeValueAsString(SEEN_BY_LLM);
         assertThat(formatterInput + response.getBody() + audit).doesNotContain(UPSTREAM_TOKEN);
+    }
+
+    @Test
+    @DisplayName("AC2 a token echoed with JSON unicode escapes is still detected after decoding and rejected")
+    void unicodeEscapedCredentialIsRejected() {
+        // Every character escaped: the raw body never contains the token, but the decoded JSON does.
+        String escaped = UPSTREAM_TOKEN.chars().mapToObj(c -> String.format("\\u%04x", c)).collect(Collectors.joining());
+        stubTool("lookup_by_ico", rpcResult("{\"content\":[{\"type\":\"text\",\"text\":\"echo: " + escaped + "\"}]}"));
+
+        ResponseEntity<JsonNode> response = asAnalyst("/api/companies/" + VALID_ICO, "ac2-escaped-token");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody().path("outcome").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(response.getBody().has("data")).isFalse();
+        assertThat(response.getBody().has("rawResponse")).isFalse();
+        assertThat(SEEN_BY_LLM).isEmpty();
+        assertThat(auditRows("ac2-escaped-token")).singleElement().satisfies(row -> assertThat(row)
+                .containsEntry("outcome", "UNAVAILABLE")
+                .containsEntry("result_sha256", null)
+                .containsEntry("detail", "Upstream localhost reflected the configured credential; response discarded"));
     }
 
     @Test

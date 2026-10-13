@@ -15,7 +15,7 @@ class AuditAppendOnlyTest extends IntegrationTestBase {
 
     private static final String INSERT = """
             INSERT INTO audit_event (trace_id, principal, roles, tool, parameters, outcome)
-            VALUES ('ac5-probe', 'probe', 'ROLE_ANALYST', 'lookup_by_ico', '{"ico":"12345679"}', 'SUCCESS')
+            VALUES ('ac5-probe', 'probe', 'ROLE_ANALYST', 'lookup_by_ico', '{"ico":"00000141"}', 'SUCCESS')
             """;
 
     @Test

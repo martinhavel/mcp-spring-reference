@@ -112,15 +112,15 @@ curl -u analyst:<ANALYST_PASSWORD>       -H 'X-Trace-Id: demo-trace-0001' localh
 curl -u compliance:<COMPLIANCE_PASSWORD> localhost:8080/api/companies/<ico>/vat
 ```
 
-Example response (synthetic data):
+Example response (fixture data):
 
 ```json
 {
   "traceId": "demo-trace-0001",
   "tool": "lookup_by_ico",
   "outcome": "SUCCESS",
-  "ico": "12345679",
-  "data": { "content": [ { "type": "text", "text": "{\"ico\":\"12345679\", ...}" } ] },
+  "ico": "00000141",
+  "data": { "content": [ { "type": "text", "text": "{\"ico\":\"00000141\", ...}" } ] },
   "rawResponse": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{...}}",
   "provenance": {
     "sourceUrl": "https://ares.cz-agents.dev/mcp",
@@ -141,7 +141,7 @@ SELECT occurred_at, trace_id, principal, roles, tool, parameters, outcome, resul
 FROM mcpref.audit_event ORDER BY id DESC;
 ```
 
-Tests: `mvn verify`. Docker is required: the tests use Testcontainers PostgreSQL with the same `db/init` script, and WireMock stands in for the upstream MCP server. All IČO values and company data in the tests and docs are synthetic.
+Tests: `mvn verify`. Docker is required: the tests use Testcontainers PostgreSQL with the same `db/init` script, and WireMock stands in for the upstream MCP server. Fixture IČO values in the tests and docs (`00000141`, `87654326`) are MOD11-valid numbers that did not resolve in ARES on 2026-10-13; there is no guarantee they stay unassigned. Company names and other data in fixtures are invented, and no real company names or identifiers are used.
 
 ### Configuration
 

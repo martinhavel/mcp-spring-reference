@@ -37,7 +37,8 @@ import org.testcontainers.utility.MountableFile;
 /**
  * Shared test infrastructure: a real PostgreSQL (initialised with the same {@code db/init}
  * script as docker-compose) and a WireMock server playing the upstream ARES MCP server.
- * All IČO values and company data here are synthetic.
+ * Fixture IČO values are MOD11-valid numbers that did not resolve in ARES on 2026-10-13 (no guarantee
+ * for the future); company data is invented. No real company names or identifiers are used.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = {
@@ -46,8 +47,8 @@ import org.testcontainers.utility.MountableFile;
 })
 public abstract class IntegrationTestBase {
 
-    /** Synthetic, MOD11-valid test IČO values. */
-    protected static final String VALID_ICO = "12345679";
+    /** MOD11-valid fixture IČO values (see class comment). */
+    protected static final String VALID_ICO = "00000141";
     protected static final String OTHER_VALID_ICO = "87654326";
     /** Correct format, wrong check digit. */
     protected static final String BAD_CHECKSUM_ICO = "12345678";
@@ -59,8 +60,8 @@ public abstract class IntegrationTestBase {
     protected static final String UPSTREAM_TOKEN = "test-upstream-token-must-never-leak";
 
     protected static final String COMPANY_FIXTURE =
-            "{\"ico\":\"12345679\",\"obchodniJmeno\":\"Example Trading s.r.o.\",\"dic\":\"CZ12345679\"}";
-    protected static final String VAT_FIXTURE = "Example Trading s.r.o. - VAT PAYER. DIC: CZ12345679";
+            "{\"ico\":\"00000141\",\"obchodniJmeno\":\"Synthetic Fixture Company\",\"dic\":\"CZ00000141\"}";
+    protected static final String VAT_FIXTURE = "Synthetic Fixture Company - VAT PAYER. DIC: CZ00000141";
 
     protected static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("mcpref")

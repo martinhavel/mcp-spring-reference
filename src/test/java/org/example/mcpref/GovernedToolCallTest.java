@@ -83,7 +83,7 @@ class GovernedToolCallTest extends IntegrationTestBase {
     // --- AC3: only validated IČO reaches the tool --------------------------------------------
 
     @ParameterizedTest
-    @ValueSource(strings = {BAD_CHECKSUM_ICO, "1234567", "123456790", "abcdefgh", "1234567X", "12345679 OR 1=1"})
+    @ValueSource(strings = {BAD_CHECKSUM_ICO, "1234567", "000001410", "abcdefgh", "1234567X", "00000141 OR 1=1"})
     @DisplayName("AC3 invalid IČO is rejected, audited, and never sent upstream")
     void invalidIcoRejected(String input) {
         String traceId = "ac3-invalid-" + Math.abs(input.hashCode());

@@ -70,6 +70,32 @@ class OptionalFormatterTest extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("AC2 an upstream that echoes the Authorization header is rejected; the token reaches no result, audit or formatter")
+    void reflectedCredentialIsRejected() throws Exception {
+        stubTool("lookup_by_ico", rpcResult(textContent("echo: {{request.headers.Authorization}}")));
+
+        ResponseEntity<JsonNode> response = asAnalyst("/api/companies/" + VALID_ICO, "ac2-reflected-token");
+
+        // The stub really did receive (and therefore echo) the token.
+        UPSTREAM.verify(postRequestedFor(urlEqualTo("/mcp")).withHeader("Authorization", equalTo("Bearer " + UPSTREAM_TOKEN)));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody().path("outcome").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(response.getBody().has("data")).isFalse();
+        assertThat(response.getBody().has("rawResponse")).isFalse();
+        assertThat(SEEN_BY_LLM).isEmpty();
+
+        var audit = auditRows("ac2-reflected-token");
+        assertThat(audit).singleElement().satisfies(row -> assertThat(row)
+                .containsEntry("outcome", "UNAVAILABLE")
+                .containsEntry("result_sha256", null));
+        assertThat(audit.get(0).get("detail").toString())
+                .isEqualTo("Upstream localhost reflected the configured credential; response discarded");
+
+        String formatterInput = new ObjectMapper().registerModule(new JavaTimeModule()).writeValueAsString(SEEN_BY_LLM);
+        assertThat(formatterInput + response.getBody() + audit).doesNotContain(UPSTREAM_TOKEN);
+    }
+
+    @Test
     @DisplayName("AC2 the formatter is not consulted for authorization: a denied call never reaches it")
     void formatterNotInvolvedInAuthorization() {
         ResponseEntity<JsonNode> response = asAnalyst("/api/companies/" + VALID_ICO + "/vat", "ac2-denied");

@@ -194,6 +194,7 @@ Tests: `mvn verify`. Docker is required: the tests use Testcontainers PostgreSQL
 
 - An audit write that fails makes the request fail (fail closed). No result leaves the service unaudited.
 - An unreachable upstream, a timeout, an unexpected status, malformed JSON or a missing tool all produce `UNAVAILABLE` with no data. Nothing is served from memory or guessed.
+- If an upstream response contains the configured upstream credential (verbatim, as `Bearer <token>`, or JSON-escaped), the client discards it before parsing and returns `UNAVAILABLE`. Nothing from that response reaches the result, the audit row or the formatter; the audit row records only the event and the upstream host.
 - An upstream answer that is a tool or protocol error produces `UPSTREAM_ERROR`, still with provenance, so it can be proven what upstream said.
 - Rejected input is audited but truncated to 32 characters, so the audit log can't be flooded.
 

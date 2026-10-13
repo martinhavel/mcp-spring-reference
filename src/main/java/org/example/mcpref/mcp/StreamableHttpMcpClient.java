@@ -172,6 +172,7 @@ public class StreamableHttpMcpClient implements McpClient {
             sessionId = response.headers().firstValue(SESSION_HEADER).orElse(null);
         }
         byte[] body = response.body();
+        rejectIfCredentialReflected(body);
         String contentType = response.headers().firstValue("Content-Type").orElse("");
         JsonNode reply = contentType.startsWith("text/event-stream")
                 ? findInEventStream(body, id)
@@ -207,6 +208,26 @@ public class StreamableHttpMcpClient implements McpClient {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new UpstreamUnavailableException("Interrupted while calling upstream", e);
+        }
+    }
+
+    /**
+     * Fails closed if upstream echoes our credential back. Runs on the raw bytes before anything is
+     * parsed, hashed, audited, returned or formatted. The exception carries only the upstream host,
+     * never the token or any part of the body.
+     */
+    private void rejectIfCredentialReflected(byte[] body) {
+        if (!properties.hasBearerToken()) {
+            return;
+        }
+        String token = properties.bearerToken();
+        String text = new String(body, StandardCharsets.UTF_8);
+        String jsonEscaped = new String(toBytes(mapper.getNodeFactory().textNode(token)), StandardCharsets.UTF_8);
+        for (String form : new String[]{token, "Bearer " + token, jsonEscaped.substring(1, jsonEscaped.length() - 1)}) {
+            if (text.contains(form)) {
+                throw new UpstreamUnavailableException("Upstream " + properties.url().getHost()
+                        + " reflected the configured credential; response discarded");
+            }
         }
     }
 

@@ -1,5 +1,7 @@
 # MCP as a governed integration adapter in a Spring application
 
+[![CI](https://github.com/martinhavel/mcp-spring-reference/actions/workflows/ci.yml/badge.svg)](https://github.com/martinhavel/mcp-spring-reference/actions/workflows/ci.yml)
+
 A small **reference implementation**, built to show an architecture rather than to be a product. A Spring Boot service acts as an **MCP client** to the public ARES MCP server (`https://ares.cz-agents.dev/mcp`). It exposes two read-only lookups by Czech company ID (IČO), and every call goes through code-enforced controls:
 
 - role-bound tool access, enforced in Java;
@@ -10,6 +12,10 @@ A small **reference implementation**, built to show an architecture rather than 
 - a trace id carried end to end.
 
 There is **no LLM** in v1. The design has one optional extension point where an LLM could format an already-verified result, and nothing depends on it.
+
+## Why
+
+This reference shows how a Spring service can use MCP as a constrained integration adapter instead of giving a model broad tool access. It makes authorization, validated input, provenance, and append-only auditing visible in a small implementation that can be reviewed end to end. For related work and context, visit [martinhavel.cz](https://martinhavel.cz).
 
 > **Shrnutí (CZ):** Referenční implementace ukazuje MCP jako řízený integrační adaptér ve Spring aplikaci. Uživatel se přihlásí (Spring Security). Podle role smí volat jen povolené nástroje ARES: vyhledání subjektu podle IČO, nebo ověření plátce DPH. Oprávnění jsou vynucena v Javě, nikoli v promptu. Na vstupu je jediný parametr, IČO ověřené kontrolním součtem MOD11. Každý výsledek nese provenienci (zdroj, nástroj, čas, SHA-256 surové odpovědi, verze adaptéru). Každé volání se zapíše do auditní tabulky v PostgreSQL, do které aplikační DB role smí pouze vkládat. Když upstream nedostupný, odpověď je explicitně `UNAVAILABLE`, nikdy vymyšlená.
 
@@ -197,6 +203,10 @@ Tests: `mvn verify`. Docker is required: the tests use Testcontainers PostgreSQL
 - If an upstream response contains the configured upstream credential (verbatim, as `Bearer <token>`, or JSON-escaped), the client discards it before parsing and returns `UNAVAILABLE`. Nothing from that response reaches the result, the audit row or the formatter; the audit row records only the event and the upstream host.
 - An upstream answer that is a tool or protocol error produces `UPSTREAM_ERROR`, still with provenance, so it can be proven what upstream said.
 - Rejected input is audited but truncated to 32 characters, so the audit log can't be flooded.
+
+### Credential-reflection protection
+
+The adapter detects a direct reflected token before it could enter `rawResponse`, reach the caller, or reach the optional formatter. It also detects a JSON-escaped token after decoding, before it could enter `ToolResult.data`; and it rejects a trailing SSE event carrying the token even when the selected event itself was clean. Each path returns `503 UNAVAILABLE` with no data, raw response, provenance, or formatter call; the audit has a null result hash and sanitized upstream-host detail, never raw content or a token.
 
 **Residual risks / production hardening (not in v1)**
 

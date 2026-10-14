@@ -1,5 +1,6 @@
 package org.example.mcpref;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -13,6 +14,7 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import org.example.mcpref.format.VerifiedResultFormatter;
 import org.example.mcpref.governance.ToolResult;
 import org.junit.jupiter.api.AfterEach;
@@ -114,6 +116,41 @@ class OptionalFormatterTest extends IntegrationTestBase {
                 .containsEntry("outcome", "UNAVAILABLE")
                 .containsEntry("result_sha256", null)
                 .containsEntry("detail", "Upstream localhost reflected the configured credential; response discarded"));
+    }
+
+    @Test
+    @DisplayName("AC2 SSE: an escaped token in an event AFTER the matching one is still detected and rejected")
+    void credentialInTrailingSseEventIsRejected() {
+        String escaped = UPSTREAM_TOKEN.chars().mapToObj(c -> String.format("\\u%04x", c)).collect(Collectors.joining());
+
+        // Control: matching event + harmless trailing event -> success, and only the selected event is passed on.
+        stubTool("lookup_by_ico", sse("{\"level\":\"info\",\"data\":\"done\"}"));
+        ResponseEntity<JsonNode> ok = asAnalyst("/api/companies/" + VALID_ICO, "ac2-sse-clean");
+        assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ok.getBody().path("rawResponse").asText()).doesNotContain("notifications/message");
+        SEEN_BY_LLM.clear();
+
+        // Same stream, but the trailing event carries the \\u-escaped token.
+        stubTool("lookup_by_ico", sse("{\"level\":\"info\",\"data\":\"echo: " + escaped + "\"}"));
+        ResponseEntity<JsonNode> response = asAnalyst("/api/companies/" + VALID_ICO, "ac2-sse-trailing");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody().path("outcome").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(response.getBody().has("data")).isFalse();
+        assertThat(response.getBody().has("rawResponse")).isFalse();
+        assertThat(SEEN_BY_LLM).isEmpty();
+        assertThat(auditRows("ac2-sse-trailing")).singleElement()
+                .satisfies(row -> assertThat(row).containsEntry("result_sha256", null));
+    }
+
+    /** An SSE stream: the matching JSON-RPC response, then a notification with the given params. */
+    private ResponseDefinitionBuilder sse(String trailingParams) {
+        return aResponse().withStatus(200)
+                .withHeader("Content-Type", "text/event-stream")
+                .withBody("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":{{jsonPath request.body '$.id'}},\"result\":"
+                        + textContent(COMPANY_FIXTURE) + "}\n\n"
+                        + "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":"
+                        + trailingParams + "}\n\n");
     }
 
     @Test

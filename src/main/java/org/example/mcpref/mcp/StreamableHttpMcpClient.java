@@ -174,9 +174,15 @@ public class StreamableHttpMcpClient implements McpClient {
         byte[] body = response.body();
         rejectIfCredentialReflected(body);
         String contentType = response.headers().firstValue("Content-Type").orElse("");
-        JsonNode reply = contentType.startsWith("text/event-stream")
-                ? findInEventStream(body, id)
-                : parseChecked(body);
+        JsonNode reply;
+        if (contentType.startsWith("text/event-stream")) {
+            // Only the selected event's data is passed on (and hashed), never the whole stream.
+            SseEvent event = findInEventStream(body, id);
+            reply = event == null ? null : event.node();
+            body = event == null ? null : event.data();
+        } else {
+            reply = parseChecked(body);
+        }
         if (reply == null || reply.path("id").asLong(-1) != id) {
             throw new UpstreamUnavailableException("Upstream reply to " + method + " has no matching JSON-RPC id");
         }
@@ -231,21 +237,28 @@ public class StreamableHttpMcpClient implements McpClient {
         }
     }
 
-    /** Picks the JSON-RPC response with the given id out of an SSE body ({@code data:} lines, blank-line separated). */
-    private JsonNode findInEventStream(byte[] body, long id) {
+    /**
+     * Picks the JSON-RPC response with the given id out of an SSE body ({@code data:} lines,
+     * blank-line separated). Every event, including those after the match, is checked for the
+     * credential in raw and decoded form before anything is returned.
+     */
+    private SseEvent findInEventStream(byte[] body, long id) {
+        SseEvent selected = null;
         StringBuilder data = new StringBuilder();
-        for (String line : (new String(body, StandardCharsets.UTF_8) + "\n\n").split("\\r?\\n")) {
+        for (String line : (new String(body, StandardCharsets.UTF_8) + "\n\n").split("\\r?\\n", -1)) {
             if (line.startsWith("data:")) {
                 data.append(line.substring(5).strip()).append('\n');
             } else if (line.isEmpty() && !data.isEmpty()) {
-                JsonNode event = parseChecked(data.toString().getBytes(StandardCharsets.UTF_8));
-                if (event.path("id").asLong(-1) == id) {
-                    return event;
+                byte[] eventData = data.substring(0, data.length() - 1).getBytes(StandardCharsets.UTF_8);
+                rejectIfCredentialReflected(eventData);
+                JsonNode event = parseChecked(eventData);
+                if (selected == null && event.path("id").asLong(-1) == id) {
+                    selected = new SseEvent(eventData, event);
                 }
                 data.setLength(0);
             }
         }
-        return null;
+        return selected;
     }
 
     /**
@@ -276,6 +289,9 @@ public class StreamableHttpMcpClient implements McpClient {
     }
 
     private record Exchange(byte[] body, JsonNode message, Instant receivedAt) {
+    }
+
+    private record SseEvent(byte[] data, JsonNode node) {
     }
 
     private static final class SessionExpiredException extends RuntimeException {
